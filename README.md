@@ -1,6 +1,6 @@
 # unifi-diag
 
-> ## ⚠️ Disclaimer — read before using
+> ## ⚠️ Disclaimer, read before using
 >
 > **This software is provided "as is", without warranty of any kind, express
 > or implied.** Although this tool is designed to be **read-only** (it
@@ -25,7 +25,7 @@ AI-assisted network diagnostics for UniFi routers.
 Works on any UniFi router that supports SSH access: UDR, UDM, UDM-Pro, UDM-SE,
 UCG-Ultra, UCG-Max, Dream Machine, etc. Developed and tested on the UDR, but
 the scripts only assume UniFi OS 7+ with SSH enabled and MongoDB on port 27117
-(standard across the line). SSH is **not** on by default — see
+(standard across the line). SSH is not on by default. See
 [Enable SSH on the router](#enable-ssh-on-the-router) below.
 
 Instead of staring at packet captures and log dumps yourself, you point Claude
@@ -33,24 +33,25 @@ Instead of staring at packet captures and log dumps yourself, you point Claude
 router, pre-process it into compact summaries, and the agent reads those
 summaries to diagnose WiFi, latency, and connectivity issues.
 
-The key idea: **never feed raw pcaps or syslog dumps to an LLM**. They blow out
-the context window and burn tokens. This repo's scripts always produce short,
-pipe-delimited or filtered summaries that an agent can read in a single tool call.
+One rule: don't feed raw pcaps or syslog dumps to an LLM. They blow out the
+context window and burn tokens. The scripts here always produce short,
+pipe-delimited or filtered summaries that an agent can read in a single tool
+call.
 
 ## What it does
 
 - Pulls live data from the router over SSH (clients, conntrack, logs, packet captures).
-- Queries the router's internal MongoDB (port 27117) directly for richer per-client
-  WiFi stats — RSSI, retries, satisfaction scores, roam history — than the UniFi
-  UI exposes.
+- Queries the router's internal MongoDB (port 27117) directly for richer
+  per-client WiFi stats (RSSI, retries, satisfaction scores, roam history) than
+  the UniFi UI exposes.
 - Runs `tshark` analyses locally on captured pcaps for retransmits, throughput,
   RTT, DNS response times, and bufferbloat.
 - Writes everything to `summaries/` as small text files. That directory is the
   shared workspace between you and the agent.
 
-## Why this is helpful
+## Why bother
 
-UniFi's web UI is good at showing you a single number ("satisfaction: 87") but
+UniFi's web UI is fine at showing you a single number ("satisfaction: 87") but
 bad at correlating across data sources. Diagnosing "my iPhone keeps dropping in
 the bedroom" actually requires looking at:
 
@@ -74,17 +75,17 @@ device having the issue and can read in plain english the diagnosis and make cha
 ## Repo layout
 
 ```
-scripts/                — Data collection and analysis (run these)
-filters/                — BPF filters for tcpdump (streaming, gaming, DNS, retransmits)
+scripts/                # data collection and analysis scripts
+filters/                # BPF filters for tcpdump (streaming, gaming, DNS, retransmits)
 docs/
-  SETUP.md              — One-time setup (SSH key, router user, dependencies)
-  network_map.example.md — Template — copy to network_map.md and fill in
-  unifi_config.example.md — Template — sanitized example of a router config digest
-  common-issues.md      — Diagnosis patterns (buffering, lag, drops)
-captures/               — Raw pcaps land here (gitignored)
-summaries/              — Pre-processed diagnostic output (gitignored)
-CLAUDE.md               — Instructions the agent reads at session start
-setup.sh                — Bootstraps SSH config, scripts, and local network_map.md
+  SETUP.md              # one-time setup (SSH key, router user, dependencies)
+  network_map.example.md # template, copy to network_map.md and fill in
+  unifi_config.example.md # sanitized example of a router config digest
+  common-issues.md      # diagnosis patterns (buffering, lag, drops)
+captures/               # raw pcaps land here (gitignored)
+summaries/              # pre-processed diagnostic output (gitignored)
+CLAUDE.md               # instructions the agent reads at session start
+setup.sh                # bootstraps SSH config, scripts, and local network_map.md
 ```
 
 ## Enable SSH on the router
@@ -126,9 +127,10 @@ understand what it does or run pieces individually).
 
 Two things are private and not committed:
 
-1. **`docs/network_map.md`** — your device inventory. `setup.sh` creates a stub.
-   Copy `docs/network_map.example.md` as a starting point and fill in your
-   actual devices. The richer this is, the better the agent can target queries.
+1. **`docs/network_map.md`** is your device inventory. `setup.sh` creates a
+   stub. Copy `docs/network_map.example.md` as a starting point and fill in
+   your actual devices. The richer this is, the better the agent can target
+   queries.
 2. **SSH access to your router.** Enable SSH in the UniFi UI first (see
    [Enable SSH on the router](#enable-ssh-on-the-router)). `setup.sh` then
    generates a dedicated key and prints the steps to authorize it. You can use
@@ -140,19 +142,19 @@ specific network.
 ## Available scripts
 
 Collection:
-- `collect-unifi-db.sh` — query UniFi MongoDB (clients, wifi-events, alarms, topology, health)
-- `collect-clients.sh` — ARP + DHCP lease table
-- `collect-logs.sh` — filtered router logs (`--filter REGEX --since 2h`)
-- `collect-tcpdump.sh` — capture with BPF filter, pull pcap back locally
+- `collect-unifi-db.sh`: query UniFi MongoDB (clients, wifi-events, alarms, topology, health)
+- `collect-clients.sh`: ARP + DHCP lease table
+- `collect-logs.sh`: filtered router logs (`--filter REGEX --since 2h`)
+- `collect-tcpdump.sh`: capture with BPF filter, pull pcap back locally
 
 Analysis (run against pcaps in `captures/`):
-- `analyze-retransmits.sh` — TCP retransmit % per conversation
-- `analyze-throughput.sh` — per-flow throughput
-- `analyze-latency.sh` — RTT distribution
-- `analyze-dns.sh` — DNS response time
-- `analyze-conntrack.sh` — conntrack state breakdown + top destinations
-- `analyze-bufferbloat.sh` — latency-under-load test
-- `quick-diag.sh` — runs the common analyses for a target IP
+- `analyze-retransmits.sh`: TCP retransmit % per conversation
+- `analyze-throughput.sh`: per-flow throughput
+- `analyze-latency.sh`: RTT distribution
+- `analyze-dns.sh`: DNS response time
+- `analyze-conntrack.sh`: conntrack state breakdown + top destinations
+- `analyze-bufferbloat.sh`: latency-under-load test
+- `quick-diag.sh`: runs the common analyses for a target IP
 
 All scripts support `--help`.
 
@@ -166,15 +168,15 @@ Router side:
 - UniFi OS 7+ with SSH enabled in the UI (tested on UDR; should work on
   UDM/UDM-Pro/UDM-SE, UCG-Ultra/Max, and other UniFi OS consoles).
 - `tcpdump` (preinstalled). `conntrack` may need `apt-get install conntrack`.
-- MongoDB on port 27117 is exposed locally on the router by default — the scripts
-  SSH in and query via the local `mongo` shell.
+- MongoDB on port 27117 is exposed locally on the router by default. The
+  scripts SSH in and query via the local `mongo` shell.
 
 ## Security notes
 
 - The agent has SSH access to your router. Use a dedicated key, ideally for a
   restricted user. See `docs/SETUP.md` for a service-user setup.
-- The MongoDB on the router has **no authentication** but only listens on
-  localhost. Scripts query it over the SSH tunnel — do not expose 27117 to your
+- The MongoDB on the router has no authentication but only listens on
+  localhost. Scripts query it over the SSH tunnel. Don't expose 27117 to your
   LAN.
 - Don't commit `captures/`, `summaries/`, or `docs/network_map.md`. They have
   your IPs, MACs, and hostnames. `.gitignore` already excludes them.
@@ -195,9 +197,9 @@ behavior change.
 ## Not in scope
 
 - This is read-only diagnostics. Nothing here changes router config.
-- No cloud APIs, no UniFi controller HTTPS API — everything goes through SSH +
-  local Mongo. That means it keeps working when your internet is down (which is
-  often when you need it).
+- No cloud APIs, no UniFi controller HTTPS API. Everything goes through SSH
+  and local Mongo. That means it keeps working when your internet is down,
+  which is usually when you need it.
 
 ## License
 
