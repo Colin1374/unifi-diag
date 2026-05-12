@@ -16,13 +16,13 @@
 > via SSH. That agent will see your network's hostnames, IPs, MACs, WiFi
 > events, and IDS alerts. If that's not what you want sent to a hosted
 > model, point it at a **local/offline model** instead (Ollama, llama.cpp,
-> LM Studio, etc.) — the scripts don't care which agent invokes them. In
+> LM Studio, etc.). The scripts don't care which agent invokes them. In
 > all cases, prefer the least-privilege SSH setup (service user, not root)
 > and consider what data leaves your network.
 
 AI-assisted network diagnostics for UniFi routers.
 
-Works on any UniFi router that supports SSH access — UDR, UDM, UDM-Pro, UDM-SE,
+Works on any UniFi router that supports SSH access: UDR, UDM, UDM-Pro, UDM-SE,
 UCG-Ultra, UCG-Max, Dream Machine, etc. Developed and tested on the UDR, but
 the scripts only assume UniFi OS 7+ with SSH enabled and MongoDB on port 27117
 (standard across the line). SSH is **not** on by default — see
@@ -61,7 +61,15 @@ the bedroom" actually requires looking at:
 - whether the destination AP supports the band the client prefers,
 - whether Min-RSSI / band steering / 802.11r are configured to kick it out.
 
-An agent can chain those queries; you can just describe the symptom.
+An agent can chain those queries; you can just describe the symptom. Also, I made this because I am often lazy. 
+I work in IT. I don't feel like diagnosing my network 24/7, I already do stuff like that at work. With this, 
+I can sit on my couch and have claude explain what's going on quickly. I use a tiny bit of brain power, but my 
+LLM does the annoying work of collecting data. You still need to know what it's talking about, but you 
+don't have to work as hard to get to the root cause. 
+
+Lastly, it's very nice to react to network issues based on time. I can pull out my phone and stand in front of the
+device having the issue and can read in plain english the diagnosis and make changes from the UniFi app.
+
 
 ## Repo layout
 
