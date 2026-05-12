@@ -1,0 +1,3 @@
+# Gaming traffic filter — common game ports + UDP
+# Use with: --filter-file gaming.bpf --target <device-ip>
+udp portrange 3074-3480 or udp port 27015 or udp port 27036 or tcp port 27015 or udp portrange 9000-9100

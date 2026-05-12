@@ -1,0 +1,25 @@
+# Raw packet captures — too large, often contain identifying traffic
+captures/*.pcap
+captures/*.pcapng
+captures/*.cap
+*.pcap
+*.pcapng
+
+# Diagnostic summaries are ephemeral and contain your IPs/MACs/hostnames.
+# Regenerate them on demand with the scripts.
+summaries/*.txt
+summaries/*.json
+
+# Local override of the network map (your real device inventory).
+# Keep the template (docs/network_map.example.md) checked in instead.
+docs/network_map.md
+
+# Your local CLAUDE.md may end up with personal context after a few sessions.
+# The committed CLAUDE.md is a sanitized template — opt in to ignoring local edits:
+# CLAUDE.local.md
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/
