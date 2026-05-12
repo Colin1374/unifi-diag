@@ -83,6 +83,25 @@ chmod +x scripts/*.sh setup.sh
 
 ## UDR side
 
+> Works on any UniFi OS console with SSH (UDR, UDM, UDM-Pro, UDM-SE,
+> UCG-Ultra/Max, Dream Machine, etc.). "UDR" below = your router.
+
+### 0. Enable SSH in the UniFi UI (one-time)
+
+SSH is **off by default** on UniFi OS. Turn it on before anything else:
+
+1. Open the UniFi web UI (e.g. `https://192.168.1.1`).
+2. Go to **Settings → System → Advanced → Device SSH Authentication**
+   (older firmware: **Console Settings → SSH**).
+3. Enable SSH. Set a username and password — this is the local OS login on
+   the router, distinct from your UniFi cloud account.
+4. Save. Confirm from your local machine:
+   ```bash
+   ssh <ssh-user>@<router-ip>     # should prompt for the password you just set
+   ```
+
+You'll replace the password with key auth in the next steps.
+
 You need SSH access from your local machine to the UDR with the key from
 step 2. Pick one of the two approaches below.
 

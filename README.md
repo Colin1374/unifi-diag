@@ -1,11 +1,17 @@
 # unifi-diag
 
-AI-assisted network diagnostics for a UniFi Dream Router (UDR).
+AI-assisted network diagnostics for UniFi routers.
+
+Works on any UniFi router that supports SSH access — UDR, UDM, UDM-Pro, UDM-SE,
+UCG-Ultra, UCG-Max, Dream Machine, etc. Developed and tested on the UDR, but
+the scripts only assume UniFi OS 7+ with SSH enabled and MongoDB on port 27117
+(standard across the line). SSH is **not** on by default — see
+[Enable SSH on the router](#enable-ssh-on-the-router) below.
 
 Instead of staring at packet captures and log dumps yourself, you point Claude
-(or any LLM coding agent) at this repo. The scripts collect data from the UDR,
-pre-process it into compact summaries, and the agent reads those summaries to
-diagnose WiFi, latency, and connectivity issues.
+(or any LLM coding agent) at this repo. The scripts collect data from the
+router, pre-process it into compact summaries, and the agent reads those
+summaries to diagnose WiFi, latency, and connectivity issues.
 
 The key idea: **never feed raw pcaps or syslog dumps to an LLM**. They blow out
 the context window and burn tokens. This repo's scripts always produce short,
@@ -53,13 +59,27 @@ CLAUDE.md               — Instructions the agent reads at session start
 setup.sh                — Bootstraps SSH config, scripts, and local network_map.md
 ```
 
+## Enable SSH on the router
+
+SSH is disabled by default on UniFi OS. Turn it on once before `setup.sh`:
+
+1. Open the UniFi web UI (e.g. `https://192.168.1.1`).
+2. **Settings → System → Advanced → Device SSH Authentication** (older
+   firmware: **Console Settings → SSH**).
+3. Toggle SSH on. Set a username + password (this is the root login on the
+   router itself, separate from your UniFi cloud account).
+4. Save. Verify: `ssh <user>@<router-ip>` from your local machine should
+   prompt for that password.
+
+`setup.sh` will then install a key so the agent can log in unattended.
+
 ## Quick start
 
 ```bash
 git clone <this-repo> ~/unifi-diag
 cd ~/unifi-diag
-./setup.sh              # interactive: asks for UDR IP, generates SSH key
-# Follow the printed instructions to install the pubkey on your UDR.
+./setup.sh              # interactive: asks for router IP, generates SSH key
+# Follow the printed instructions to install the pubkey on your router.
 ssh udr "echo ok"       # verify connection
 
 # Then, in Claude Code (or any agent):
@@ -81,9 +101,10 @@ Two things are private and not committed:
 1. **`docs/network_map.md`** — your device inventory. `setup.sh` creates a stub.
    Copy `docs/network_map.example.md` as a starting point and fill in your
    actual devices. The richer this is, the better the agent can target queries.
-2. **SSH access to your UDR.** `setup.sh` generates a dedicated key and prints
-   the steps to authorize it. You can use root or a restricted service user;
-   `docs/SETUP.md` covers both.
+2. **SSH access to your router.** Enable SSH in the UniFi UI first (see
+   [Enable SSH on the router](#enable-ssh-on-the-router)). `setup.sh` then
+   generates a dedicated key and prints the steps to authorize it. You can use
+   root or a restricted service user; `docs/SETUP.md` covers both.
 
 That's it. The scripts themselves don't have anything hardcoded about a
 specific network.
@@ -113,8 +134,9 @@ Local machine:
 - `bash`, `ssh`, `tshark` (Wireshark CLI), `jq`
 - Tested on Linux. Should work on macOS with Homebrew tshark/jq.
 
-UDR side:
-- SSH access (UniFi OS 7+, tested on UDR; should work on UDM/UDM-Pro/UDM-SE).
+Router side:
+- UniFi OS 7+ with SSH enabled in the UI (tested on UDR; should work on
+  UDM/UDM-Pro/UDM-SE, UCG-Ultra/Max, and other UniFi OS consoles).
 - `tcpdump` (preinstalled). `conntrack` may need `apt-get install conntrack`.
 - MongoDB on port 27117 is exposed locally on the UDR by default — the scripts
   SSH in and query via the local `mongo` shell.
