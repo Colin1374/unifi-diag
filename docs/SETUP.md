@@ -2,10 +2,11 @@
 
 Everything you need to do to go from a fresh clone to a working diagnostic setup.
 There are two sides: **your local machine** (where the agent runs) and **the
-UDR** (where the data lives).
+UniFi router** (where the data lives). Tested on the UDR; works on any UniFi
+OS console with SSH (UDM, UDM-Pro, UDM-SE, UCG-Ultra/Max, Dream Machine, etc.).
 
 If you just want it to work, run `./setup.sh` in the repo root — it does most
-of this interactively and prints what you still need to do manually on the UDR.
+of this interactively and prints what you still need to do manually on the router.
 This document is the long form: read it if you want to understand the pieces,
 or if you prefer to do things by hand.
 
@@ -20,7 +21,7 @@ You need these on your local machine:
 | Tool      | Used for                                    | Install (Debian/Ubuntu)    | Install (macOS)         | Install (Arch)             |
 |-----------|---------------------------------------------|----------------------------|-------------------------|----------------------------|
 | `bash`    | running the scripts                          | preinstalled               | preinstalled            | preinstalled               |
-| `ssh`     | talking to the UDR                           | preinstalled               | preinstalled            | preinstalled               |
+| `ssh`     | talking to the router                        | preinstalled               | preinstalled            | preinstalled               |
 | `jq`      | parsing JSON from Mongo queries              | `apt install jq`           | `brew install jq`       | `pacman -S jq`             |
 | `tshark`  | pcap analysis (retransmits, RTT, DNS, etc.)  | `apt install tshark`       | `brew install wireshark`| `pacman -S wireshark-cli`  |
 
@@ -35,7 +36,7 @@ directory. The repo is built around [Claude Code](https://claude.com/claude-code
 (the `CLAUDE.md` file is read automatically at session start), but any
 tool-calling agent works — point it at `CLAUDE.md` manually.
 
-### 2. SSH key for the UDR
+### 2. SSH key for the router
 
 Generate a dedicated key, no passphrase (the agent needs unattended access):
 
@@ -49,7 +50,7 @@ Add a host alias so the scripts can just call `ssh udr`. Edit `~/.ssh/config`:
 
 ```
 Host udr
-    HostName 192.168.1.1        # ← your UDR's LAN IP
+    HostName 192.168.1.1        # ← your router's LAN IP
     User root                   # or "unifi-diag" if you set up a service user (below)
     IdentityFile ~/.ssh/udr_diag_key
     StrictHostKeyChecking accept-new
@@ -81,10 +82,10 @@ chmod +x scripts/*.sh setup.sh
 
 ---
 
-## UDR side
+## Router side
 
 > Works on any UniFi OS console with SSH (UDR, UDM, UDM-Pro, UDM-SE,
-> UCG-Ultra/Max, Dream Machine, etc.). "UDR" below = your router.
+> UCG-Ultra/Max, Dream Machine, etc.).
 
 ### 0. Enable SSH in the UniFi UI (one-time)
 
@@ -102,18 +103,18 @@ SSH is **off by default** on UniFi OS. Turn it on before anything else:
 
 You'll replace the password with key auth in the next steps.
 
-You need SSH access from your local machine to the UDR with the key from
+You need SSH access from your local machine to the router with the key from
 step 2. Pick one of the two approaches below.
 
 ### Option A — Root access (simpler)
 
-This is what most home users do. The UDR's `root` account already exists.
+This is what most home users do. The router's `root` account already exists.
 
 ```bash
 # From your local machine, copy your pubkey over once:
-ssh-copy-id -i ~/.ssh/udr_diag_key.pub root@<UDR-IP>
-# (You'll be prompted for the UDR root password, which is the same as your
-#  UniFi admin password unless you've changed it via `passwd`.)
+ssh-copy-id -i ~/.ssh/udr_diag_key.pub root@<router-ip>
+# (You'll be prompted for the router's root password — the one you set in the
+#  UniFi UI when you enabled SSH.)
 ```
 
 Then in `~/.ssh/config` set `User root`.
@@ -124,9 +125,9 @@ If `ssh udr` stops working after an update, re-run `ssh-copy-id`.
 ### Option B — Dedicated service user (more careful)
 
 ```bash
-ssh root@<UDR-IP>
+ssh root@<router-ip>
 
-# On the UDR:
+# On the router:
 adduser --disabled-password --gecos "unifi-diag service" unifi-diag
 usermod -aG adm unifi-diag                                   # log access
 setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump        # tcpdump without root
@@ -152,7 +153,7 @@ auth, and any user can `mongo --port 27117`. But `conntrack -L` and reading
 some files in `/data/unifi-core/logs/` do require root, so the simpler path is
 just to use root.
 
-### UDR tools
+### Router-side tools
 
 These should already be present on UniFi OS:
 
@@ -175,9 +176,9 @@ If `conntrack` is missing, install it:
 ssh udr "apt-get update && apt-get install -y conntrack"
 ```
 
-### MongoDB on the UDR
+### MongoDB on the router
 
-The UDR runs MongoDB 3.6 on port 27117 with no authentication, bound to
+UniFi OS runs MongoDB 3.6 on port 27117 with no authentication, bound to
 localhost only. Two databases matter:
 
 - `ace` — configuration: clients, devices, networks, WLANs, firewall, alarms
@@ -198,10 +199,10 @@ which jq tshark
 # SSH alias works and key is accepted
 ssh udr "echo ok && whoami"
 
-# UDR tools
+# Router-side tools
 ssh udr "which tcpdump conntrack mongo"
 
-# Mongo is reachable on the UDR
+# Mongo is reachable on the router
 ssh udr "mongo --port 27117 --quiet --eval 'db.adminCommand({listDatabases:1}).databases.map(d => d.name)'"
 # Expected: a JSON array containing "ace" and "ace_stat"
 
@@ -217,22 +218,23 @@ this directory and describe a symptom.
 
 ## Optional: post-firmware-update recovery
 
-Save this script somewhere outside the UDR's transient storage and re-run it
+Save this script somewhere outside the router's transient storage and re-run it
 after firmware updates if SSH access breaks:
 
 ```bash
 #!/usr/bin/env bash
-# reauthorize-udr.sh — re-install the diag key on the UDR after a firmware update.
-UDR_IP=192.168.1.1
-ssh-copy-id -i ~/.ssh/udr_diag_key.pub root@"$UDR_IP"
+# reauthorize-udr.sh — re-install the diag key on the router after a firmware update.
+ROUTER_IP=192.168.1.1
+ssh-copy-id -i ~/.ssh/udr_diag_key.pub root@"$ROUTER_IP"
 # If you use Option B, also re-create the user and re-setcap tcpdump here.
 ```
 
 ## Troubleshooting
 
-- `Permission denied (publickey)` — key not installed on UDR. Re-run
-  `ssh-copy-id` or re-paste the pubkey into `authorized_keys`.
-- `mongo: command not found` on the UDR — the UDR's UniFi Network application
+- `Permission denied (publickey)` — key not installed on the router, or SSH
+  not enabled in the UniFi UI. Enable SSH in the UI; re-run `ssh-copy-id` or
+  re-paste the pubkey into `authorized_keys`.
+- `mongo: command not found` on the router — the UniFi Network application
   is not installed or is in a degraded state. Reboot from the UI.
 - `tshark: command not found` locally — install Wireshark CLI (see table above).
 - Scripts produce huge summaries — pass `--since 1` (or smaller) to narrow the

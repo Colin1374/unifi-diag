@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Analyze conntrack table from UDR for a target device
+# Analyze conntrack table from the UniFi router for a target device
 # Usage: ./analyze-conntrack.sh --target IP
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 TARGET=""
 UDR_HOST="udr"
@@ -20,6 +22,7 @@ if [[ -z "$TARGET" ]]; then
     echo "ERROR: --target required"
     exit 1
 fi
+require_ipv4 "$TARGET" "--target"
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 OUTPUT="$PROJECT_DIR/summaries/conntrack-${TIMESTAMP}.txt"

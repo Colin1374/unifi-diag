@@ -1,14 +1,14 @@
-# Raw packet captures — too large, often contain identifying traffic
-captures/*.pcap
-captures/*.pcapng
-captures/*.cap
+# Raw packet captures — too large, often contain identifying traffic.
+# Ignore the whole directory (keep it tracked via captures/.gitkeep if desired).
+captures/*
+!captures/.gitkeep
 *.pcap
 *.pcapng
 
 # Diagnostic summaries are ephemeral and contain your IPs/MACs/hostnames.
 # Regenerate them on demand with the scripts.
-summaries/*.txt
-summaries/*.json
+summaries/*
+!summaries/.gitkeep
 
 # Local override of the network map (your real device inventory).
 # Keep the template (docs/network_map.example.md) checked in instead.
@@ -20,6 +20,11 @@ docs/network_map.md
 
 # OS / editor cruft
 .DS_Store
+**/.DS_Store
 *.swp
 .idea/
 .vscode/
+
+# Local security review notes (not committed)
+gpt-review.md
+claude-review.md

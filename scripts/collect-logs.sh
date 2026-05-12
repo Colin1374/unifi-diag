@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Collect filtered logs from UDR via SSH
+# Collect filtered logs from the UniFi router via SSH
 # Usage: ./collect-logs.sh [--filter PATTERN] [--log-source SOURCE] [--lines N]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 # Defaults
 FILTER=""
@@ -45,6 +47,11 @@ if [[ -z "$FILTER" ]]; then
     exit 1
 fi
 
+# Validate inputs that flow into the remote SSH command.
+require_grep_pattern "$FILTER" "--filter"
+require_int "$LINES" "--lines" 1 1000000
+[[ -n "$SINCE" ]] && require_since "$SINCE" "--since"
+
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 OUTPUT="$PROJECT_DIR/summaries/logs-${TIMESTAMP}.txt"
 
@@ -55,7 +62,7 @@ echo "Lines:   $LINES per source"
 echo "Output:  $OUTPUT"
 echo ""
 
-# Define log paths on UDR
+# Define log paths on the router
 declare -A LOG_PATHS=(
     ["system"]="/var/log/messages"
     ["kernel"]="dmesg"
@@ -65,7 +72,7 @@ declare -A LOG_PATHS=(
     ["ids"]="/data/unifi-core/logs/ids/suricata.log"
 )
 
-# Convert --since duration to a UDR-side awk timestamp threshold for syslog-format logs.
+# Convert --since duration to a router-side awk timestamp threshold for syslog-format logs.
 # Returns a remote shell pipeline that filters lines by recency.
 since_filter() {
     if [[ -z "$SINCE" ]]; then echo "cat"; return; fi
@@ -75,7 +82,7 @@ since_filter() {
         *d) local secs=$(( ${SINCE%d} * 86400 )) ;;
         *)  local secs="$SINCE" ;;
     esac
-    # Use date arithmetic on UDR side; works on any syslog line whose first 3 fields are date-parseable.
+    # Use date arithmetic on the router side; works on any syslog line whose first 3 fields are date-parseable.
     echo "awk -v cutoff=\$(date -d '@'\$(( \$(date +%s) - $secs )) '+%s') '
         { ts=\"\";
           # Try ISO format first (UniFi server.log)

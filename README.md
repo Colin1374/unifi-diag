@@ -1,5 +1,25 @@
 # unifi-diag
 
+> ## ⚠️ Disclaimer — read before using
+>
+> **This software is provided "as is", without warranty of any kind, express
+> or implied.** Although this tool is designed to be **read-only** (it
+> collects diagnostic data via SSH/MongoDB queries and does not modify
+> router configuration), the author accepts **no responsibility** for any
+> damage, data loss, network outage, security incident, or other harm that
+> may result from running these scripts or any code an AI agent generates
+> on top of them. **You** are responsible for reviewing what the scripts
+> and the agent do before you run them.
+>
+> **Be deliberate about which AI you give router access to.** This repo
+> assumes an LLM coding agent will run shell commands against your router
+> via SSH. That agent will see your network's hostnames, IPs, MACs, WiFi
+> events, and IDS alerts. If that's not what you want sent to a hosted
+> model, point it at a **local/offline model** instead (Ollama, llama.cpp,
+> LM Studio, etc.) — the scripts don't care which agent invokes them. In
+> all cases, prefer the least-privilege SSH setup (service user, not root)
+> and consider what data leaves your network.
+
 AI-assisted network diagnostics for UniFi routers.
 
 Works on any UniFi router that supports SSH access — UDR, UDM, UDM-Pro, UDM-SE,
@@ -19,8 +39,8 @@ pipe-delimited or filtered summaries that an agent can read in a single tool cal
 
 ## What it does
 
-- Pulls live data from the UDR over SSH (clients, conntrack, logs, packet captures).
-- Queries the UDR's internal MongoDB (port 27117) directly for richer per-client
+- Pulls live data from the router over SSH (clients, conntrack, logs, packet captures).
+- Queries the router's internal MongoDB (port 27117) directly for richer per-client
   WiFi stats — RSSI, retries, satisfaction scores, roam history — than the UniFi
   UI exposes.
 - Runs `tshark` analyses locally on captured pcaps for retransmits, throughput,
@@ -49,9 +69,9 @@ An agent can chain those queries; you can just describe the symptom.
 scripts/                — Data collection and analysis (run these)
 filters/                — BPF filters for tcpdump (streaming, gaming, DNS, retransmits)
 docs/
-  SETUP.md              — One-time setup (SSH key, UDR user, dependencies)
+  SETUP.md              — One-time setup (SSH key, router user, dependencies)
   network_map.example.md — Template — copy to network_map.md and fill in
-  unifi_config.example.md — Template — sanitized example of a UDR config digest
+  unifi_config.example.md — Template — sanitized example of a router config digest
   common-issues.md      — Diagnosis patterns (buffering, lag, drops)
 captures/               — Raw pcaps land here (gitignored)
 summaries/              — Pre-processed diagnostic output (gitignored)
@@ -114,7 +134,7 @@ specific network.
 Collection:
 - `collect-unifi-db.sh` — query UniFi MongoDB (clients, wifi-events, alarms, topology, health)
 - `collect-clients.sh` — ARP + DHCP lease table
-- `collect-logs.sh` — filtered UDR logs (`--filter REGEX --since 2h`)
+- `collect-logs.sh` — filtered router logs (`--filter REGEX --since 2h`)
 - `collect-tcpdump.sh` — capture with BPF filter, pull pcap back locally
 
 Analysis (run against pcaps in `captures/`):
@@ -138,14 +158,14 @@ Router side:
 - UniFi OS 7+ with SSH enabled in the UI (tested on UDR; should work on
   UDM/UDM-Pro/UDM-SE, UCG-Ultra/Max, and other UniFi OS consoles).
 - `tcpdump` (preinstalled). `conntrack` may need `apt-get install conntrack`.
-- MongoDB on port 27117 is exposed locally on the UDR by default — the scripts
+- MongoDB on port 27117 is exposed locally on the router by default — the scripts
   SSH in and query via the local `mongo` shell.
 
 ## Security notes
 
 - The agent has SSH access to your router. Use a dedicated key, ideally for a
   restricted user. See `docs/SETUP.md` for a service-user setup.
-- The MongoDB on the UDR has **no authentication** but only listens on
+- The MongoDB on the router has **no authentication** but only listens on
   localhost. Scripts query it over the SSH tunnel — do not expose 27117 to your
   LAN.
 - Don't commit `captures/`, `summaries/`, or `docs/network_map.md`. They have
@@ -153,9 +173,20 @@ Router side:
 - The committed `CLAUDE.md` is generic. If you add personal context to it,
   consider moving that into `CLAUDE.local.md` (also gitignored).
 
+## Input validation
+
+The collection scripts validate argument shapes (IPv4 / MAC / integer /
+interface name / `--since`) before any value is interpolated into a remote
+SSH command or Mongo query. Anything that doesn't match is rejected with a
+non-zero exit. This guards against an agent (or a typo) injecting shell or
+JS through arguments that ultimately run on the router as root. Legitimate
+inputs are unaffected; if you previously passed a non-standard MAC or
+hostname-as-target, you'll now get a clear error instead of a silent
+behavior change.
+
 ## Not in scope
 
-- This is read-only diagnostics. Nothing here changes UDR config.
+- This is read-only diagnostics. Nothing here changes router config.
 - No cloud APIs, no UniFi controller HTTPS API — everything goes through SSH +
   local Mongo. That means it keeps working when your internet is down (which is
   often when you need it).

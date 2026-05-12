@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull full client list from UDR and build/update network map
+# Pull full client list from the UniFi router and build/update network map
 # Usage: ./collect-clients.sh
 set -euo pipefail
 
@@ -11,11 +11,11 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RAW_OUTPUT="$PROJECT_DIR/summaries/clients-raw-${TIMESTAMP}.txt"
 OUTPUT="$PROJECT_DIR/summaries/clients-${TIMESTAMP}.txt"
 
-echo "=== Collecting client list from UDR ==="
+echo "=== Collecting client list from UniFi router ==="
 
-# Try multiple methods — UDR firmware varies on what's available
+# Try multiple methods — UniFi OS firmware varies on what's available
 
-# Method 1: UniFi OS API (most reliable on UDR 7+)
+# Method 1: UniFi OS local API (most reliable on UniFi OS 7+)
 echo "[1] Trying UniFi OS API..."
 API_RESULT=$(ssh "$UDR_HOST" "curl -s --unix-socket /run/unifi-core/api.sock http://localhost/proxy/network/api/s/default/stat/sta" 2>/dev/null) || API_RESULT=""
 
@@ -25,7 +25,7 @@ if [[ -n "$API_RESULT" && "$API_RESULT" != *"error"* && "$API_RESULT" != *"unaut
 
     # Parse JSON into readable table
     {
-        echo "=== UDR Client List ==="
+        echo "=== UniFi Router Client List ==="
         echo "Collected: $(date)"
         echo "Method: UniFi OS local API"
         echo ""
@@ -78,13 +78,13 @@ for c in sorted(clients, key=lambda x: [int(p) for p in x.get('ip','0.0.0.0').sp
     exit 0
 fi
 
-# Method 2: ubnt-device-info (older UDR firmware)
+# Method 2: ubnt-device-info (older UniFi OS firmware)
 echo "[2] Trying ubnt-device-info..."
 UBNT_RESULT=$(ssh "$UDR_HOST" "ubnt-device-info clients 2>/dev/null" 2>/dev/null) || UBNT_RESULT=""
 
 if [[ -n "$UBNT_RESULT" ]]; then
     {
-        echo "=== UDR Client List ==="
+        echo "=== UniFi Router Client List ==="
         echo "Collected: $(date)"
         echo "Method: ubnt-device-info"
         echo ""
@@ -99,7 +99,7 @@ fi
 # Method 3: Fallback — ARP + DHCP leases
 echo "[3] Falling back to ARP table + DHCP leases..."
 {
-    echo "=== UDR Client List (fallback) ==="
+    echo "=== UniFi Router Client List (fallback) ==="
     echo "Collected: $(date)"
     echo "Method: ARP + DHCP leases (API/ubnt-device-info not available)"
     echo ""
