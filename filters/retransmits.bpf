@@ -1,0 +1,4 @@
+# TCP SYN/RST/FIN flags — useful for connection issues
+# Note: retransmit detection is done by tshark post-capture, not BPF
+# This filter captures TCP control packets + all TCP to target
+tcp
