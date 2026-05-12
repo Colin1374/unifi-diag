@@ -48,7 +48,7 @@ pipe-delimited or filtered summaries that an agent can read in a single tool cal
 - Writes everything to `summaries/` as small text files. That directory is the
   shared workspace between you and the agent.
 
-## Why an agent helps here
+## Why this is helpful
 
 UniFi's web UI is good at showing you a single number ("satisfaction: 87") but
 bad at correlating across data sources. Diagnosing "my iPhone keeps dropping in
