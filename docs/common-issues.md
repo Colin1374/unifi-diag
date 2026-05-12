@@ -20,13 +20,13 @@
 - Driver issue → check firmware updates
 
 **Latency spikes (>50ms to gateway)**
-- Bufferbloat → enable SQM/Smart Queues on UDR
+- Bufferbloat → enable SQM/Smart Queues on the router
 - WiFi contention → too many devices on same AP/channel
-- UDR CPU overload → `ssh udr "top -bn1 | head -20"`
+- Router CPU overload → `ssh udr "top -bn1 | head -20"`
 
 **DNS delays (>100ms)**
 - Slow upstream DNS → switch to 1.1.1.1 or 8.8.8.8
-- DNS rebinding protection blocking CDN → check UDR threat management
+- DNS rebinding protection blocking CDN → check router threat management
 
 **Zero windows in capture**
 - Device buffer exhaustion → device hardware limitation
@@ -63,7 +63,7 @@ ping -c 20 <game-server>
 - DHCP lease issues → check lease table
 - AP overloaded → check client count per AP
 - Aggressive power save on device → device WiFi settings
-- Missing `hostapd .vlan` file on UDR → toggle a WLAN setting in the UI to
+- Missing `hostapd .vlan` file on the router → toggle a WLAN setting in the UI to
   regenerate; symptom is one specific SSID refusing associations while others
   work fine on the same radio
 

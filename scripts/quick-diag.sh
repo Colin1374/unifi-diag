@@ -5,6 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 
 TARGET=""
 DURATION=30
@@ -22,6 +24,8 @@ if [[ -z "$TARGET" ]]; then
     echo "ERROR: --target required"
     exit 1
 fi
+require_ipv4 "$TARGET" "--target"
+require_int  "$DURATION" "--duration" 1 86400
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SUMMARY="$PROJECT_DIR/summaries/quick-diag-${TIMESTAMP}.txt"

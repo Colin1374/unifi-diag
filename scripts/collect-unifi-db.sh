@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Query UniFi MongoDB on UDR for diagnostic data
+# Query UniFi MongoDB on the router for diagnostic data
 # Usage: ./collect-unifi-db.sh [COMMAND]
 #
 # Commands:
@@ -15,6 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=_lib.sh
+. "$SCRIPT_DIR/_lib.sh"
 UDR_HOST="udr"
 MONGO="mongo --port 27117 --quiet"
 
@@ -24,6 +26,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 cmd_clients() {
     local since_days="${1:-7}"
+    require_int "$since_days" "--since" 0 36500
     local output="$PROJECT_DIR/summaries/unifi-clients-${TIMESTAMP}.txt"
     local since_epoch=0
     if [[ "$since_days" != "0" ]]; then
@@ -55,6 +58,7 @@ JSEOF
 
 cmd_clients_lean() {
     local since_days="${1:-2}"
+    require_int "$since_days" "--since" 0 36500
     local output="$PROJECT_DIR/summaries/unifi-clients-lean-${TIMESTAMP}.txt"
     local since_epoch
     since_epoch=$(( $(date +%s) - since_days * 86400 ))
@@ -81,6 +85,7 @@ JSEOF
 
 cmd_client_stats() {
     local target_ip="$1"
+    require_ipv4 "$target_ip" "client-stats IP"
     local output="$PROJECT_DIR/summaries/unifi-client-stats-${target_ip}-${TIMESTAMP}.txt"
 
     # Resolve IP to MAC
@@ -95,6 +100,8 @@ JSEOF
         echo "ERROR: No client found with IP $target_ip"
         return 1
     fi
+    # The mac came back from Mongo; re-validate before feeding into the next query.
+    require_mac "$mac" "resolved MAC for $target_ip"
 
     {
         echo "=== Client Stats: $target_ip ($mac) ==="
@@ -143,6 +150,8 @@ JSEOF
 cmd_wifi_events() {
     local target_mac="$1"
     local since_days="${2:-7}"
+    require_mac "$target_mac" "wifi-events MAC"
+    require_int "$since_days" "--since" 0 36500
     local output="$PROJECT_DIR/summaries/unifi-wifi-events-${TIMESTAMP}.txt"
     local since_ms=$(( ( $(date +%s) - since_days * 86400 ) * 1000 ))
     {

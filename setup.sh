@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # unifi-diag setup — local side bootstrap.
-# Does what it can automatically and tells you what to do manually on the UDR.
+# Does what it can automatically and tells you what to do manually on the router.
 
 set -euo pipefail
 
@@ -54,14 +54,14 @@ else
 fi
 echo
 
-# --- 3. UDR host + SSH config -----------------------------------------------
+# --- 3. Router host + SSH config --------------------------------------------
 bold "==> SSH config"
 if grep -qE "^Host[[:space:]]+${SSH_ALIAS}\b" "$SSH_CONFIG" 2>/dev/null; then
   green "  Host alias '${SSH_ALIAS}' already configured in $SSH_CONFIG"
   echo "  (skipping; edit it by hand if the IP or user is wrong)"
 else
-  read -rp "UDR LAN IP (e.g. 192.168.1.1): " udr_ip
-  read -rp "SSH user on UDR [root]: " udr_user
+  read -rp "UniFi router LAN IP (e.g. 192.168.1.1): " udr_ip
+  read -rp "SSH user on the router [root]: " udr_user
   udr_user="${udr_user:-root}"
   mkdir -p "$(dirname "$SSH_CONFIG")"
   touch "$SSH_CONFIG"
@@ -103,17 +103,21 @@ echo
 # --- 6. Manual steps remaining ----------------------------------------------
 bold "==> Manual steps left for you"
 cat <<EOF
-1. Install your pubkey on the UDR. Pick one:
+0. Enable SSH on the router from the UniFi UI if you haven't yet:
+     Settings -> System -> Advanced -> Device SSH Authentication
+   (older firmware: Console Settings -> SSH). Set a username + password.
+
+1. Install your pubkey on the router. Pick one:
 
    Simple (root):
-     ssh-copy-id -i ${KEY_PATH}.pub root@<UDR-IP>
+     ssh-copy-id -i ${KEY_PATH}.pub root@<router-ip>
 
    Service user (see docs/SETUP.md "Option B" for the full snippet).
 
 2. Verify the connection works without a password:
      ssh ${SSH_ALIAS} "echo ok && whoami"
 
-3. Verify UDR tools are present:
+3. Verify router-side tools are present:
      ssh ${SSH_ALIAS} "which tcpdump mongo conntrack"
    If 'conntrack' is missing:
      ssh ${SSH_ALIAS} "apt-get update && apt-get install -y conntrack"

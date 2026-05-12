@@ -128,3 +128,12 @@ committed). If it doesn't exist yet, prompt the user to copy
 - DHCP: `/var/log/daemon.log` (filter for dnsmasq)
 - IDS/IPS: `/data/unifi-core/logs/ids/`
 - MongoDB: port 27117, databases: `ace`, `ace_stat`
+
+
+<claude-mem-context>
+# Memory Context
+
+# [unifi-diag] recent context, 2026-05-12 3:10pm CDT
+
+No previous sessions found.
+</claude-mem-context>
