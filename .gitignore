@@ -28,3 +28,6 @@ docs/network_map.md
 # Local security review notes (not committed)
 gpt-review.md
 claude-review.md
+
+# Per-site survey config (your AP IPs / tracked MACs) — see scripts/collect-survey.sh header
+scripts/survey.local.conf

@@ -25,6 +25,7 @@ scripts/
   collect-logs.sh         — SSH to router, grab filtered logs
   collect-clients.sh      — Pull client list from router (ARP + DHCP leases)
   collect-unifi-db.sh     — Query UniFi MongoDB for rich diagnostic data
+  collect-survey.sh       — RUN ON SURVEY LAPTOP: per-room dual-direction RSSI sample (client iw scan + AP-side mca-dump); --report pivots summaries/survey.psv
   analyze-retransmits.sh  — tshark: retransmit stats from pcap
   analyze-throughput.sh   — tshark: per-conversation throughput
   analyze-latency.sh      — tshark: RTT analysis
