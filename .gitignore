@@ -13,6 +13,7 @@ summaries/*
 # Local override of the network map (your real device inventory).
 # Keep the template (docs/network_map.example.md) checked in instead.
 docs/network_map.md
+docs/unifi_config.md
 
 # Your local CLAUDE.md may end up with personal context after a few sessions.
 # The committed CLAUDE.md is a sanitized template — opt in to ignoring local edits:

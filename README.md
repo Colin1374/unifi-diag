@@ -60,7 +60,9 @@ the bedroom" actually requires looking at:
 - which AP/channel/band it was on,
 - whether the same client has retry spikes,
 - whether the destination AP supports the band the client prefers,
-- whether Min-RSSI / band steering / 802.11r are configured to kick it out.
+- whether Min-RSSI / band steering / Roaming Assistant are configured to kick
+  it out, and whether those settings leave the client any radio it can actually
+  connect to in that room.
 
 An agent can chain those queries; you can just describe the symptom. Also, I made this because I am often lazy. 
 I work in IT. I don't feel like diagnosing my network 24/7, I already do stuff like that at work. With this, 
@@ -76,12 +78,13 @@ device having the issue and can read in plain english the diagnosis and make cha
 
 ```
 scripts/                # data collection and analysis scripts
+  collect-survey.sh     # per-room WiFi survey (run on a laptop, not the router)
 filters/                # BPF filters for tcpdump (streaming, gaming, DNS, retransmits)
 docs/
   SETUP.md              # one-time setup (SSH key, router user, dependencies)
   network_map.example.md # template, copy to network_map.md and fill in
   unifi_config.example.md # sanitized example of a router config digest
-  common-issues.md      # diagnosis patterns (buffering, lag, drops)
+  common-issues.md      # diagnosis patterns (buffering, lag, drops, roaming)
 captures/               # raw pcaps land here (gitignored)
 summaries/              # pre-processed diagnostic output (gitignored)
 CLAUDE.md               # instructions the agent reads at session start
@@ -146,6 +149,7 @@ Collection:
 - `collect-clients.sh`: ARP + DHCP lease table
 - `collect-logs.sh`: filtered router logs (`--filter REGEX --since 2h`)
 - `collect-tcpdump.sh`: capture with BPF filter, pull pcap back locally
+- `collect-survey.sh`: per-room WiFi survey (see [WiFi survey](#wifi-survey) below)
 
 Analysis (run against pcaps in `captures/`):
 - `analyze-retransmits.sh`: TCP retransmit % per conversation
@@ -193,6 +197,60 @@ JS through arguments that ultimately run on the router as root. Legitimate
 inputs are unaffected; if you previously passed a non-standard MAC or
 hostname-as-target, you'll now get a clear error instead of a silent
 behavior change.
+
+## WiFi survey
+
+`collect-survey.sh` measures signal strength from every room in your house so
+you can set Min-RSSI thresholds and Roaming Assistant values based on real data
+instead of guessing.
+
+Run it on a laptop (not the router). It captures signal in both directions at
+each spot:
+
+- **Client-side (down):** what your laptop sees from each AP. This is what tools
+  like WiFiman show you.
+- **AP-side (up):** what each AP sees from your laptop. This is what Min-RSSI
+  gates and Roaming Assistant actually act on, and it runs about 6-12 dB worse
+  than the client-side reading. If you tune thresholds from client-side numbers,
+  they'll be too aggressive.
+
+It works on Linux, macOS, and Windows (Git Bash or WSL). AP-side readings are
+collected by SSHing to the router and hopping to each managed AP using
+credentials fetched from the controller's MongoDB at runtime. Nothing is stored
+on disk.
+
+### Usage
+
+```bash
+# Set up your local config (gitignored):
+cat > scripts/survey.local.conf <<'EOF'
+AP_HOPS="MyAP1:192.168.1.20 MyAP2:192.168.1.21"
+TRACK_MACS="aa:bb:cc:dd:ee:ff"
+EOF
+
+# Take a reading in each room:
+./scripts/collect-survey.sh living-room
+./scripts/collect-survey.sh bedroom --note "beside the couch"
+
+# View the results as a room x AP/band matrix:
+./scripts/collect-survey.sh --report
+```
+
+`AP_HOPS` lists your managed APs (name:IP pairs). The router itself is always
+included. `TRACK_MACS` adds extra devices to track on the AP side (the survey
+laptop is always tracked automatically). Results accumulate in
+`summaries/survey.psv`.
+
+### Diagnosing roaming failures
+
+If devices disconnect when moving between rooms, the problem is usually
+competing kick mechanisms. UniFi has three that can compound: per-radio Min-RSSI
+(device settings), WLAN-level Roaming Assistant per band (applies to every AP on
+the SSID), and band steering. The survey data tells you which rooms are below
+each threshold and whether a device has any radio it can actually connect to.
+
+See `docs/common-issues.md` for the full diagnosis pattern, including log
+signatures that distinguish a healthy roam from a lockout loop.
 
 ## Not in scope
 
