@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# collect-survey.sh — per-room WiFi survey sampler for Min-RSSI tuning + RSSI fingerprint DB.
+# collect-survey.sh — per-room WiFi survey sampler for Min-RSSI / roaming tuning + RSSI fingerprinting.
 #
-# RUN THIS ON A SURVEY LAPTOP (Linux with iw + python3), not on the UDR.
-# Laptop needs: ssh access to the UDR (host alias or IP via UDR_HOST), python3,
-# sudo rights for `iw scan`. No AP credentials are stored — they are fetched
-# from the controller's Mongo (setting.mgmt) at runtime, inside the UDR session.
+# RUN THIS ON A SURVEY LAPTOP, not on the gateway. Supported platforms:
+#   Linux    — scans via `sudo iw` (needs sudo)
+#   macOS    — scans via `system_profiler` (no sudo; BSSIDs are hidden by the OS,
+#              networks are matched to APs by SSID+channel instead)
+#   Windows  — run from Git Bash or WSL; scans via `netsh.exe` (signal % converted to ~dBm)
+# All platforms need: bash, python3 (or python), ssh access to the gateway.
+# No AP credentials are stored — they are fetched from the controller's Mongo
+# (setting.mgmt) at runtime, inside the gateway ssh session.
 #
 # Captures BOTH directions at each spot:
-#   down — client-side scan RSSI of every visible home BSSID (sudo iw scan)
-#   up   — AP-side RSSI of tracked client MACs (mca-dump on UDR + sshpass hop
-#          to any other managed APs). "up" is what the Min-RSSI gate acts on.
+#   down — client-side scan RSSI of every home BSSID
+#   up   — AP-side RSSI of tracked client MACs (mca-dump on the gateway + sshpass hop
+#          to other managed APs). "up" is what Min-RSSI gates and Roaming Assistant
+#          act on, and it typically runs 6-12 dB WORSE than the client-side reading.
+#          Never tune kick thresholds from client-side numbers.
 #
 # Config (env vars, or put them in scripts/survey.local.conf — gitignored):
-#   UDR_HOST    ssh destination for the UDR            (default: udr)
+#   UDR_HOST    ssh destination for the gateway        (default: udr)
 #   AP_HOPS     space-separated Name:IP of other APs   (default: none; e.g. "AP1:192.168.1.20 AP2:192.168.1.21")
-#   TRACK_MACS  extra client MACs to record AP-side    (default: none; surveying laptop is always tracked)
+#   TRACK_MACS  extra client MACs to record AP-side    (default: none; the surveying laptop is always tracked)
 #   SURVEY_OUT  output file                            (default: summaries/survey.psv)
 #
 # Usage:
@@ -36,9 +42,18 @@ AP_HOPS="${AP_HOPS:-}"
 SURVEY_OUT="${SURVEY_OUT:-$SCRIPT_DIR/../summaries/survey.psv}"
 HEADER="ts|location|device|dir|ap|band|ssid|bssid|rssi_dbm|note"
 DEFAULT_TRACK="${TRACK_MACS:-}"
+PY="$(command -v python3 || command -v python)"
+[ -n "$PY" ] || { echo "python3 not found" >&2; exit 1; }
+
+case "$(uname -s)" in
+  Linux*)  grep -qi microsoft /proc/version 2>/dev/null && OS=windows || OS=linux ;;
+  Darwin*) OS=macos ;;
+  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
+  *) echo "unsupported platform: $(uname -s)" >&2; exit 1 ;;
+esac
 
 report() {
-  python3 - "$SURVEY_OUT" <<'PYEOF'
+  "$PY" - "$SURVEY_OUT" <<'PYEOF'
 import sys, statistics, collections
 rows = [l.rstrip("\n").split("|") for l in open(sys.argv[1]) if "|" in l]
 rows = [r for r in rows[1:] if len(r) >= 9]
@@ -67,7 +82,7 @@ PYEOF
 }
 
 [ "${1:-}" = "--report" ] && { report; exit 0; }
-[ $# -ge 1 ] || { grep '^# ' "$0" | head -31; exit 1; }
+[ $# -ge 1 ] || { grep '^# ' "$0" | head -34; exit 1; }
 
 LOCATION="$1"; shift
 NOTE=""
@@ -80,21 +95,127 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-IFC="$(iw dev | awk '$1=="Interface"{print $2; exit}')"
-[ -n "$IFC" ] || { echo "no wifi interface found" >&2; exit 1; }
-MY_MAC="$(cat "/sys/class/net/$IFC/address")"
-TRACK="$MY_MAC,$TRACK"
 TS="$(date +%Y-%m-%dT%H:%M:%S)"
+HOST="${HOSTNAME:-$(hostname)}"; HOST="${HOST%%.*}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
-echo ">> [$LOCATION] client-side scan on $IFC ..." >&2
-for attempt in 1 2 3; do
-  if sudo iw dev "$IFC" scan > "$TMP/scan.txt" 2>"$TMP/scan.err"; then break; fi
-  [ "$attempt" = 3 ] && { cat "$TMP/scan.err" >&2; exit 1; }
-  sleep 2
-done
+# ---- detect own WiFi MAC (the in-use, possibly randomized, address) ----
+case "$OS" in
+  linux)
+    IFC="$(iw dev | awk '$1=="Interface"{print $2; exit}')"
+    [ -n "$IFC" ] || { echo "no wifi interface found" >&2; exit 1; }
+    MY_MAC="$(cat "/sys/class/net/$IFC/address")"
+    ;;
+  macos)
+    IFC="$(networksetup -listallhardwareports | awk '/Wi-Fi|AirPort/{getline; print $2; exit}')"
+    [ -n "$IFC" ] || { echo "no wifi interface found" >&2; exit 1; }
+    MY_MAC="$(ifconfig "$IFC" | awk '/ether/{print $2; exit}')"
+    ;;
+  windows)
+    MY_MAC="$(netsh.exe wlan show interfaces 2>/dev/null | tr -d '\r' \
+      | awk -F': ' 'tolower($0) ~ /physical address/{gsub(/-/,":",$2); print tolower($2); exit}')"
+    [ -n "$MY_MAC" ] || { echo "no wifi interface found (is WiFi on?)" >&2; exit 1; }
+    ;;
+esac
+TRACK="$MY_MAC,$TRACK"
 
-echo ">> AP-side mca-dump (UDR + hops) ..." >&2
+# ---- client-side scan, normalized to: bssid|ssid|channel|band|rssi  ("?" where unknown) ----
+echo ">> [$LOCATION] client-side scan ($OS) ..." >&2
+case "$OS" in
+  linux)
+    for attempt in 1 2 3; do
+      if sudo iw dev "$IFC" scan > "$TMP/scan.raw" 2>"$TMP/scan.err"; then break; fi
+      [ "$attempt" = 3 ] && { cat "$TMP/scan.err" >&2; exit 1; }
+      sleep 2
+    done
+    "$PY" - < "$TMP/scan.raw" > "$TMP/scan.psv" <<'PYEOF'
+import re, sys
+def chan_band(freq):
+    f = int(freq)
+    if f < 3000:  return (14 if f == 2484 else (f - 2407) // 5, "2g")
+    if f < 5945:  return ((f - 5000) // 5, "5g")
+    return ((f - 5950) // 5, "6g")
+bss = freq = sig = None; ssid = ""
+def flush():
+    if bss and sig is not None and freq:
+        ch, band = chan_band(freq)
+        print(f"{bss}|{ssid}|{ch}|{band}|{round(float(sig))}")
+for line in sys.stdin:
+    m = re.match(r"^BSS ([0-9a-f:]{17})", line)
+    if m:
+        flush(); bss, freq, sig, ssid = m.group(1).lower(), None, None, ""
+    elif "freq:" in line:
+        freq = float(line.split("freq:")[1].strip().split()[0])
+    elif "signal:" in line:
+        sig = float(line.split("signal:")[1].strip().split()[0])
+    elif re.match(r"^\s+SSID:", line):
+        ssid = line.split("SSID:", 1)[1].strip()
+flush()
+PYEOF
+    ;;
+  macos)
+    system_profiler SPAirPortDataType 2>/dev/null > "$TMP/scan.raw"
+    "$PY" - < "$TMP/scan.raw" > "$TMP/scan.psv" <<'PYEOF'
+import re, sys
+# system_profiler lists networks as "<indent><SSID>:" blocks containing
+# "Channel: 64 (5GHz, 80MHz)" and "Signal / Noise: -65 dBm / -92 dBm".
+# macOS hides BSSIDs from unprivileged tools; emit "?" and let the parser
+# match by SSID+channel against the AP dump.
+ssid = ch = band = sig = None
+def flush():
+    if ssid and ch and sig is not None:
+        print(f"?|{ssid}|{ch}|{band or '?'}|{sig}")
+for line in sys.stdin:
+    m = re.match(r"^(\s+)(\S[^:]{0,31}):\s*$", line)
+    if m and len(m.group(1)) >= 10:
+        flush(); ssid, ch, band, sig = m.group(2).strip(), None, None, None
+        continue
+    m = re.search(r"Channel:\s*(\d+)\s*\((2\.4|5|6)GHz", line)
+    if m:
+        ch = int(m.group(1)); band = {"2.4": "2g", "5": "5g", "6": "6g"}[m.group(2)]
+    m = re.search(r"Signal / Noise:\s*(-\d+)\s*dBm", line)
+    if m:
+        sig = int(m.group(1))
+flush()
+PYEOF
+    ;;
+  windows)
+    netsh.exe wlan show networks mode=bssid 2>/dev/null | tr -d '\r' > "$TMP/scan.raw"
+    "$PY" - < "$TMP/scan.raw" > "$TMP/scan.psv" <<'PYEOF'
+import re, sys
+# netsh reports signal as a quality percentage; dBm ~= pct/2 - 100.
+# The "Band" line exists on Win11 only; otherwise band comes from the
+# channel number or the SSID+channel match against the AP dump.
+ssid = ""; bss = ch = band = sig = None
+def flush():
+    if bss and sig is not None:
+        b = band or ("2g" if ch and ch <= 14 else "?")
+        print(f"{bss}|{ssid}|{ch or '?'}|{b}|{sig}")
+for line in sys.stdin:
+    m = re.match(r"^SSID \d+ : (.*)$", line)
+    if m:
+        flush(); ssid = m.group(1).strip(); bss = ch = band = sig = None
+        continue
+    m = re.match(r"^\s+BSSID \d+\s+: ([0-9a-fA-F:]{17})", line)
+    if m:
+        flush(); bss = m.group(1).lower(); ch = band = sig = None
+        continue
+    m = re.search(r"Signal\s+:\s*(\d+)%", line)
+    if m:
+        sig = int(m.group(1)) // 2 - 100
+    m = re.search(r"Channel\s+:\s*(\d+)", line)
+    if m:
+        ch = int(m.group(1))
+    m = re.search(r"Band\s+:\s*([\d.]+)\s*GHz", line)
+    if m:
+        band = {"2.4": "2g", "5": "5g", "6": "6g"}.get(m.group(1))
+flush()
+PYEOF
+    ;;
+esac
+
+# ---- AP-side station dumps (gateway + sshpass hops using controller-managed creds) ----
+echo ">> AP-side mca-dump (gateway + hops) ..." >&2
 # Note: ssh flattens its argument list into one command line which the remote
 # shell re-splits, so each hop arrives as its own positional parameter.
 ssh "$UDR_HOST" bash -s -- $AP_HOPS > "$TMP/aps.txt" <<'RMTEOF'
@@ -113,15 +234,11 @@ RMTEOF
 mkdir -p "$(dirname "$SURVEY_OUT")"
 [ -s "$SURVEY_OUT" ] || echo "$HEADER" > "$SURVEY_OUT"
 
-python3 - "$TMP" "$TS" "$LOCATION" "$TRACK" "$NOTE" "$(hostname -s)" <<'PYEOF' | tee -a "$SURVEY_OUT"
-import json, re, sys
+"$PY" - "$TMP" "$TS" "$LOCATION" "$TRACK" "$NOTE" "$HOST" <<'PYEOF' | tee -a "$SURVEY_OUT"
+import json, sys
 tmp, ts, loc, track, note, host = sys.argv[1:7]
 track = {m.strip().lower() for m in track.split(",") if m.strip()}
 BAND = {"ng": "2g", "na": "5g", "6e": "6g"}
-
-def band_of(freq):
-    f = int(freq)
-    return "2g" if f < 3000 else ("5g" if f < 5945 else "6g")
 
 # ---- AP-side dumps ----
 dumps, name = {}, None
@@ -131,47 +248,41 @@ for line in open(f"{tmp}/aps.txt"):
     elif name:
         dumps[name].append(line)
 
-rows, bssid_map = [], {}   # bssid -> (ap, band, ssid)
+rows, bssid_map, sidch_map = [], {}, {}   # bssid -> (ap,band,ssid); (ssid,ch) -> same
 for ap, buf in dumps.items():
     try:
         d = json.loads("".join(buf))
     except ValueError:
-        print(f"!! {ap}: no/with bad mca-dump output, skipped", file=sys.stderr); continue
+        print(f"!! {ap}: no/bad mca-dump output, skipped", file=sys.stderr); continue
     for vt in d.get("vap_table", []):
         band = BAND.get(vt.get("radio", ""), vt.get("radio", "?"))
         ssid, bssid = vt.get("essid", "?"), vt.get("bssid", "").lower()
+        ch = str(vt.get("channel", "?"))
+        info = (ap, band, ssid)
         if bssid:
-            bssid_map[bssid] = (ap, band, ssid)
+            bssid_map[bssid] = info
+        sidch_map[(ssid, ch)] = info
         for sta in vt.get("sta_table", []):
             mac = sta.get("mac", "").lower()
             if mac in track:
                 dev = sta.get("hostname") or mac
                 rows.append([ts, loc, dev, "up", ap, band, ssid, bssid, str(sta.get("signal", "")), note])
 
-# ---- client-side scan ----
-bss, freq, sig, ssid = None, None, None, None
-def flush():
-    if not bss or sig is None:
-        return
-    ap, band, sname = bssid_map.get(bss, (None, band_of(freq or 0), ssid or "?"))
-    if ap is None:
-        if not ssid or ssid not in {s for _, _, s in bssid_map.values()}:
-            return                      # not one of our networks
-        ap = "?"
-        sname = ssid
-    rows.append([ts, loc, host, "down", ap, band, sname, bss, str(round(float(sig))), note])
-
-for line in open(f"{tmp}/scan.txt"):
-    m = re.match(r"^BSS ([0-9a-f:]{17})", line)
-    if m:
-        flush(); bss, freq, sig, ssid = m.group(1).lower(), None, None, None
-    elif "freq:" in line:
-        freq = float(line.split("freq:")[1].strip().split()[0])
-    elif "signal:" in line:
-        sig = float(line.split("signal:")[1].strip().split()[0])
-    elif re.match(r"^\s+SSID:", line):
-        ssid = line.split("SSID:", 1)[1].strip()
-flush()
+# ---- client-side scan (normalized: bssid|ssid|channel|band|rssi) ----
+our_ssids = {s for _, _, s in sidch_map.values()}
+for line in open(f"{tmp}/scan.psv"):
+    parts = line.rstrip("\n").split("|")
+    if len(parts) != 5:
+        continue
+    bss, ssid, ch, band, rssi = parts
+    info = bssid_map.get(bss) or sidch_map.get((ssid, ch))
+    if info:
+        ap, band, ssid = info
+    elif ssid in our_ssids:
+        ap = "?"                       # ours, but AP not identifiable from this scan
+    else:
+        continue                       # not one of our networks
+    rows.append([ts, loc, host, "down", ap, band, ssid, bss, rssi, note])
 
 for r in rows:
     print("|".join(r))

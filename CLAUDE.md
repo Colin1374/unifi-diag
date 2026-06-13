@@ -114,12 +114,22 @@ committed). If it doesn't exist yet, prompt the user to copy
 2. `collect-logs.sh --filter "deauth|disassoc|disconnect" --since 2h`.
 3. `analyze-conntrack.sh --target <IP>` — top destinations + state breakdown.
 
-### WiFi Roaming Issues
+### WiFi Roaming Issues / Move-Between-Rooms Disconnects
 1. `collect-unifi-db.sh wifi-events <MAC>` — roaming history with RSSI at each hop.
-2. Look for: frequent roams, failed roams, low RSSI at connection time.
-3. If a client sticks to a weak AP, the fix is usually tighter per-radio Min-RSSI
-   on the AP it's stuck on (e.g. -75 → -70). Pair with 802.11r/k on the SSID
-   for smooth handoff.
+2. BEFORE tuning anything, dump ALL THREE kick mechanisms — per-radio Min-RSSI
+   (device radio_table), WLAN-level Roaming Assistant per band (wlanconf
+   roaming_assistant_*), and band steering. They compound, and the WLAN-level one
+   applies to every AP at once. See docs/common-issues.md "Roam-Kick Lockout".
+3. Survey the problem room with `collect-survey.sh` carrying the affected device
+   (--track its MAC). Thresholds act on AP-side **up** RSSI, which runs ~6-12 dB
+   worse than client-side readings — never tune from WiFiman numbers.
+4. If the best AP's uplink in a room is below every threshold, the room is locked
+   out — loosen/disable a gate; tightening makes it worse.
+5. Invariants: a gated 6GHz radio needs an ungated same-AP 5GHz escape hatch
+   (Apple clients join 6GHz whenever audible and won't leave voluntarily).
+   Keep 802.11v on; treat 802.11r as guilty until a walk test proves it works.
+6. Walk-test log signatures (daemon.log): repeated `kick-sta-on` + `rssia` denials
+   + `auth_flood` = lockout; `UBNT ROAM` + `ignored kick ... On other VAP` = healthy.
 
 ## Router Log Locations
 - System: `/var/log/messages`
