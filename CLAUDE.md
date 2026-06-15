@@ -13,6 +13,24 @@ The agent reads pre-processed summaries (NOT raw pcaps/logs) to diagnose issues.
 - Summaries should be <500 lines. If bigger, filter harder (smaller `--since`).
 - When diagnosing, state confidence level and what additional data would help.
 
+## Machine-vs-Network Isolation (READ BEFORE diagnosing throughput/lag)
+A single endpoint's symptom (one PC lagging, one slow speedtest) is NOT proof of
+a network problem. Before recommending ANY network change:
+1. Test from a SECOND device or from the router itself
+   (`ssh udr ping -c20 8.8.8.8`). If the router's WAN test is clean (low RTT,
+   0% loss), the network core is fine — look at the endpoint.
+2. Compare throughput against the PLAN's rated speed before claiming
+   congestion/bufferbloat. Ask the user their up/down plan if unknown.
+   (A download that is a small fraction of link capacity cannot saturate it.)
+3. Do NOT trust UniFi's `wan-latency` stat (ace_stat gateway docs) as ground
+   truth — it is a controller probe and can read hundreds of ms while a real
+   ICMP ping from the router is fine. Always corroborate with a live ping.
+4. Wired endpoint slow + router WAN clean => suspect the ENDPOINT (NIC driver,
+   cable, duplex, CPU pegged during test, AV/DPI software, local background
+   traffic), not the network.
+5. State machine-vs-network confidence explicitly and name the single test that
+   would settle it. Don't fit a network story to ambiguous stats.
+
 ## Router Connection
 - SSH alias `udr` is configured in `~/.ssh/config` (see `docs/SETUP.md`).
 - Connect: `ssh udr`.

@@ -1,5 +1,41 @@
 # Common Issue Patterns
 
+## Endpoint vs. Network (one device slow / laggy)
+
+### Symptoms
+- One machine lags or speed-tests poorly (e.g. SC2 lag, 76/180 on a 2 Gbps line)
+- User unsure whether it's the network or the machine itself
+
+### Diagnosis steps
+1. **Ping the internet FROM the router** — removes the endpoint from the path:
+   `ssh udr "ping -c20 8.8.8.8; ping -c10 1.1.1.1"`. Low RTT + 0% loss = the
+   ISP/WAN core is healthy; the problem is the endpoint or its LAN path.
+2. **Baseline a second wired device** (e.g. holodeck) on the same router/WAN. If
+   it pulls full speed while the suspect machine doesn't, the network is
+   exonerated. (Ookla CLI: static musl build from install.speedtest.net works
+   even when linuxbrew/apt packages are broken.)
+3. **Sanity-check capacity**: compare observed Mbps to the PLAN's rated speed
+   before crying congestion. A few % of link capacity cannot cause bufferbloat.
+4. **Don't trust UniFi's `wan-latency` stat alone** — it's a controller probe;
+   it has read 476 ms avg / 3864 ms max at idle while a real router ICMP ping
+   was 13 ms. Corroborate every latency claim with a live ping.
+
+### Common causes (when router WAN test is clean)
+- Endpoint NIC driver / duplex mismatch / bad cable or switch port
+- CPU pegged on the endpoint during the test (single-thread speedtest limits)
+- Antivirus / DPI / VPN software on the endpoint throttling traffic
+- Local background traffic on that machine (updates, sync, backup)
+- Speedtest server selection / transient peering issue (re-test another server)
+
+### Anti-pattern (illustrative)
+A game lags on a wired PC. The agent blames a large download elsewhere on the
+LAN for "bufferbloat" and points to a high UniFi wan-latency reading as proof —
+then recommends QoS changes. But the download was a small fraction of the link's
+rated capacity (can't cause congestion), and the wan-latency figure was an
+unreliable controller probe: a live router ping showed low RTT and 0% loss the
+whole time. The WAN was fine; the fix belonged on the endpoint.
+**Isolate before tuning.**
+
 ## Buffering on Streaming Devices
 
 ### Symptoms
